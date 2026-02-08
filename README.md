@@ -33,7 +33,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o icmpshell-shell-Ex.exe ./cmd
 
 **macOS (Shell):**
 ```bash
-CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o icmpshell-shell-mac-Ex ./cmd/shell
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o icmpshell-shell-darwin-arm64-Ex ./cmd/shell
 ```
 
 ## 📖 使用说明
