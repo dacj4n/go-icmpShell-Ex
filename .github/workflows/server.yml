@@ -12,7 +12,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: server
-          path: icmpshell-server-linux-amd64-Ex1
+          path: icmpshell-server-linux-amd64-Ex
       - uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
