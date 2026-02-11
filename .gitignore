@@ -1,1 +1,12 @@
 build/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.DS_Store
+.idea/
+.vscode/
