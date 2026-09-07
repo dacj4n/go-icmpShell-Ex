@@ -10,10 +10,14 @@ import (
 	"github.com/urfave/cli"
 )
 
+// version 为默认版本号,可在编译时通过 -ldflags "-X main.version=x.y.z" 覆盖
+var version = "v2.0.1"
+
 var (
 	app = &cli.App{
-		Name:  "go-icmpshell",
-		Usage: "go-icmpshell",
+		Name:    "go-icmpshell-client",
+		Usage:   "go-icmpshell client (ICMP reverse shell)",
+		Version: version,
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  "ip",
